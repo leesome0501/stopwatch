@@ -175,6 +175,7 @@ ALTER TABLE account
 CREATE TABLE import_batch (
     id                 bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     data_source_id     bigint      NOT NULL REFERENCES data_source(id),
+    account_id         bigint      REFERENCES account(id),  -- 파일 업로드처럼 대상 계좌가 하나일 때
     started_at         timestamptz NOT NULL DEFAULT now(),
     finished_at        timestamptz,
     status             text        NOT NULL DEFAULT 'running'
@@ -258,6 +259,7 @@ CREATE TABLE txn (
     instrument_id   bigint        REFERENCES instrument(id),
     quantity        numeric(28,10),                     -- 부호 포함
     unit_price      numeric(24,8),                      -- 종목 통화 기준 체결 단가
+    balance_after   numeric(20,4),                      -- 소스가 알려준 거래 후 잔액 (대사·중복판정용)
     fee             numeric(20,4) NOT NULL DEFAULT 0 CHECK (fee >= 0),  -- 정보용, amount에 포함됨
     tax             numeric(20,4) NOT NULL DEFAULT 0 CHECK (tax >= 0),  -- 원천징수·거래세, amount에 포함됨
     category_id     bigint        REFERENCES category(id),
