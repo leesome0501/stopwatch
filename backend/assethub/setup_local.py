@@ -2,7 +2,7 @@
 
   1. PostgreSQL 접속 정보를 묻고 접속을 확인한다
   2. assethub 데이터베이스가 없으면 만든다
-  3. 테이블과 기본 데이터를 넣는다 (이미 있으면 건너뜀, 지우지 않는다)
+  3. 밀린 데이터베이스 변경(마이그레이션)을 적용한다 (기존 데이터는 지우지 않는다)
   4. 원하면 예제 가구 데이터를 넣는다
   5. 접속 정보를 backend/.env 에 저장한다
 
@@ -21,7 +21,8 @@ import psycopg
 from psycopg import sql
 
 from .config import DB_DIR, ENV_FILE, read_env_file
-from .db import apply_schema, utf8
+from .db import utf8
+from .migrate import MigrationError, migrate
 
 
 def ask(prompt: str, default: str, yes: bool) -> str:
@@ -92,15 +93,16 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     with psycopg.connect(utf8(url), autocommit=True) as conn:
-        has_schema = conn.execute("SELECT to_regclass('public.household') IS NOT NULL").fetchone()[0]
-        if has_schema:
-            print("테이블이 이미 있어 건너뜁니다 (기존 데이터는 그대로 둡니다).")
-        else:
-            apply_schema(conn)
-            print("테이블과 기본 데이터(금융기관, 카테고리)를 넣었습니다.")
-            if a.sample or confirm("예제 가구 데이터(통장·증권·아파트 등)를 넣어 화면을 먼저 볼까요?", False, a.yes):
-                conn.execute((DB_DIR / "sample.sql").read_text(encoding="utf-8"))
-                print("예제 가구 데이터를 넣었습니다. 실제로 쓰실 때는 데이터베이스를 새로 만드세요.")
+        try:
+            newly = migrate(conn)
+        except MigrationError as e:
+            print(f"\n데이터베이스 변경을 적용하지 못했습니다: {e}")
+            return 1
+        print("테이블과 기본 데이터를 준비했습니다." if newly else "테이블이 최신 상태입니다 (기존 데이터는 그대로 둡니다).")
+        empty = conn.execute("SELECT NOT EXISTS (SELECT 1 FROM household)").fetchone()[0]
+        if empty and (a.sample or confirm("예제 가구 데이터(통장·증권·아파트 등)를 넣어 화면을 먼저 볼까요?", False, a.yes)):
+            conn.execute((DB_DIR / "sample.sql").read_text(encoding="utf-8"))
+            print("예제 가구 데이터를 넣었습니다. 실제로 쓰실 때는 관리 화면에서 '예제 데이터 지우기'를 누르세요.")
 
     if not existing:
         a.env_file.write_text(f"DATABASE_URL={url}\n", encoding="utf-8")

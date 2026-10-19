@@ -15,6 +15,7 @@ ENV_FILE = BACKEND_DIR / ".env"   # setup 이 만든다. git 에는 올라가지
 class Settings:
     database_url: str
     max_upload_bytes: int = 20 * 1024 * 1024
+    auto_migrate: bool = True     # 서버가 시작할 때 밀린 마이그레이션을 적용
 
 
 def read_env_file(path: Path = ENV_FILE) -> dict[str, str]:

@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from psycopg.rows import dict_row
 
 from assethub.config import Settings
-from assethub.db import apply_schema
+from assethub.migrate import migrate
 from assethub.main import create_app
 
 TEMPLATE_DB = "assethub_test_template"
@@ -45,7 +45,7 @@ def admin_url():
         c.execute(f"DROP DATABASE IF EXISTS {TEMPLATE_DB}")
         c.execute(f"CREATE DATABASE {TEMPLATE_DB}")
     with psycopg.connect(_with_db(url, TEMPLATE_DB), autocommit=True) as c:
-        apply_schema(c)
+        migrate(c, log=lambda m: None)
     yield url
     with psycopg.connect(url, autocommit=True) as c:
         c.execute(f"DROP DATABASE IF EXISTS {TEMPLATE_DB}")
@@ -70,8 +70,19 @@ def db_url(admin_url):
 
 
 @pytest.fixture
+def empty_db_url(admin_url):
+    """아무 테이블도 없는 빈 데이터베이스."""
+    name = f"assethub_e_{uuid.uuid4().hex[:10]}"
+    with psycopg.connect(admin_url, autocommit=True) as c:
+        c.execute(f"CREATE DATABASE {name} TEMPLATE template0 ENCODING 'UTF8'")
+    yield _with_db(admin_url, name)
+    with psycopg.connect(admin_url, autocommit=True) as c:
+        c.execute(f"DROP DATABASE IF EXISTS {name} WITH (FORCE)")
+
+
+@pytest.fixture
 def client(db_url):
-    with TestClient(create_app(Settings(database_url=db_url))) as c:
+    with TestClient(create_app(Settings(database_url=db_url, auto_migrate=False))) as c:
         yield c
 
 

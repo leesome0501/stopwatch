@@ -30,8 +30,7 @@
 
 | 경로 | 내용 |
 | --- | --- |
-| `db/schema.sql` | PostgreSQL 스키마 (테이블, 함수, 뷰) |
-| `db/seed.sql` | 주요 금융기관, 기본 카테고리 |
+| `db/migrations/` | 데이터베이스 구조 변경 이력 (`0001` 스키마, `0002` 금융기관·카테고리, 이후 변경분) |
 | `db/sample.sql` | 예제 가구 데이터 |
 | `db/tests.sql` | 예제 데이터 기준 검증 |
 | `docs/data-model.md` | 데이터 모델 설계 설명 |
@@ -76,6 +75,8 @@ setup.cmd
 `asset-hub` 폴더의 `start.cmd`를 더블클릭하면 브라우저에서 `http://localhost:8000/`이 열립니다. 검은 창을 닫으면 꺼집니다.
 이 PC에서만 접속되도록 열어 둡니다 (아직 로그인 기능이 없으므로).
 
+**업데이트**: 새 기능이 올라오면 `start.cmd` 창을 닫고 `update.cmd`를 더블클릭합니다. 코드를 받고, 데이터베이스 변경을 적용하고(기존 데이터는 그대로), 화면을 다시 빌드합니다.
+
 **시세 자동 수집**: 작업 스케줄러에 `collect.cmd`를 평일 저녁(예: 18:40)과 아침(예: 07:10)에 실행하도록 등록하세요.
 
 ## 백엔드 실행 (Mac·Linux)
@@ -83,13 +84,13 @@ setup.cmd
 PostgreSQL 16 이상과 [uv](https://docs.astral.sh/uv/)가 필요합니다.
 
 ```bash
-createdb assethub
-psql assethub -f db/schema.sql -f db/seed.sql
-
 cd backend
 uv sync
-DATABASE_URL=postgresql:///assethub uv run uvicorn assethub.main:app --reload
+uv run python -m assethub.setup_local      # DB 만들기, 마이그레이션, backend/.env 저장
+uv run uvicorn assethub.main:app --reload
 ```
+
+서버는 시작할 때마다 밀린 데이터베이스 변경(`db/migrations/`)을 자동으로 적용합니다.
 
 대시보드를 함께 띄우려면 한 번 빌드해 둡니다. 빌드된 화면은 FastAPI가 `/`에서 서빙합니다.
 

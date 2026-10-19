@@ -3,7 +3,7 @@
 1단계(수동·엑셀 입력, 시세 수집, 순자산 대시보드)를 위한 데이터 모델입니다.
 2단계 이후 자동 수집(증권사 API, CODEF, 업비트)이 붙어도 이 모델은 바뀌지 않고, 수집기가 같은 테이블에 행을 넣기만 하도록 설계했습니다.
 
-실제 정의는 [`db/schema.sql`](../db/schema.sql), 예제는 [`db/sample.sql`](../db/sample.sql)에 있습니다.
+실제 정의는 [`db/migrations/`](../db/migrations/)에 있습니다. 첫 구조는 `0001_init.sql`, 이후 변경은 다음 번호 파일로 쌓입니다. 예제는 [`db/sample.sql`](../db/sample.sql)에 있습니다.
 
 ## 핵심 원칙
 

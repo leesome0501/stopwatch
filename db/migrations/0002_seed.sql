@@ -1,5 +1,4 @@
 -- 기본 데이터: 주요 금융기관, 기본 카테고리 (household_id = NULL 은 전 가구 공통)
-BEGIN;
 
 INSERT INTO institution (code, name, kind) VALUES
   ('KB',        'KB국민은행',     'bank'),
@@ -64,5 +63,3 @@ SELECT NULL, p.id, c.name, p.kind, c.ord
     ('내부이체',  '대출상환', 4), ('내부이체', '가족간이체', 5)
   ) AS c(parent, name, ord)
   JOIN category p ON p.name = c.parent AND p.household_id IS NULL AND p.parent_id IS NULL;
-
-COMMIT;

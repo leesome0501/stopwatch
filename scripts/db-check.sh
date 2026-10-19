@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 스키마 + 기본 데이터 + 예제 데이터를 빈 DB에 넣고 tests.sql 로 검증한다.
+# 마이그레이션 + 예제 데이터를 빈 DB에 넣고 tests.sql 로 검증한다.
 #
 #   DATABASE_URL=postgres://... scripts/db-check.sh   # 기존 서버의 "빈" DB 사용
 #   scripts/db-check.sh                                # 임시 클러스터를 띄워서 사용 (root 불가)
@@ -8,11 +8,13 @@ cd "$(dirname "$0")/.."
 
 run() {
   local url="$1"
-  for f in db/schema.sql db/seed.sql db/sample.sql db/tests.sql; do
+  for f in db/migrations/[0-9]*.sql db/sample.sql db/tests.sql; do
     echo "== $f"
     # tests.sql 은 결과 행 대신 NOTICE(ok/FAIL)만 보여준다
     if [[ "$f" == db/tests.sql ]]; then out=/dev/null; else out=/dev/stdout; fi
-    psql "$url" -X -q -v ON_ERROR_STOP=1 -f "$f" -o "$out" 2>&1 | sed 's/^psql:[^ ]* NOTICE:  //' 
+    # 마이그레이션 파일은 실제 적용과 같이 파일 하나를 트랜잭션 하나로 실행
+    if [[ "$f" == db/migrations/* ]]; then single=(-1); else single=(); fi
+    psql "$url" -X -q "${single[@]}" -v ON_ERROR_STOP=1 -f "$f" -o "$out" 2>&1 | sed 's/^psql:[^ ]* NOTICE:  //' 
   done
 }
 

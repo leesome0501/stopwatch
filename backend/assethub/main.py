@@ -13,7 +13,8 @@ from fastapi.staticfiles import StaticFiles
 
 from .api import accounts, dashboard, households, imports, market, reports, transactions
 from .config import FRONTEND_DIST, Settings, load_settings
-from .db import open_pool
+from .db import open_pool, utf8
+from .migrate import migrate
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -21,6 +22,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         s = settings or load_settings()
         app.state.settings = s
+        if s.auto_migrate:
+            import psycopg
+            with psycopg.connect(utf8(s.database_url), autocommit=True) as conn:
+                migrate(conn, log=lambda m: print(f"[AssetHub] {m}"))
         app.state.pool = open_pool(s.database_url)
         try:
             yield
