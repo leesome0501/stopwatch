@@ -6,7 +6,7 @@ import { navigate } from "../router";
 import { ErrorNote, useAction, useLoad } from "../ui";
 
 const STATUS = { new: "새 거래", duplicate: "중복", error: "오류" } as const;
-const SOURCE = { file: "파일", rule: "규칙", history: "지난 분류" } as const;
+const SOURCE = { file: "파일", rule: "규칙", history: "지난 분류", kind: "기본" } as const;
 const SHOW_ROWS = 300;
 
 function amountText(amount: string | null, currency: string | null) {

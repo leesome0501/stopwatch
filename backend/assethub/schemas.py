@@ -158,6 +158,8 @@ class Account(Row):
     interest_rate: Decimal | None
     memo: str | None
     owners: list[OwnerShare]
+    data_source_id: int | None = None     # 증권사 API 로 동기화되는 계좌면 연결 ID
+    external_ref: str | None = None
 
 
 class InstrumentIn(BaseModel):
@@ -299,7 +301,7 @@ class ImportRowOut(BaseModel):
     unit_price: Decimal | None
     category_id: int | None
     category_name: str | None
-    category_source: str | None
+    category_source: str | None   # file | rule | history | kind
     message: str | None
 
 

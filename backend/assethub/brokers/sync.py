@@ -132,7 +132,7 @@ def reconcile(conn: Conn, account_id: int, snap: Snapshot, *, source_id: int, pr
     return made
 
 
-def _store_snapshot(conn: Conn, account_id: int, snap: Snapshot, day: date) -> None:
+def _store_snapshot(conn: Conn, account_id: int, snap: Snapshot, day: date, provider: str) -> None:
     for currency, value in snap.cash.items():
         total = snap.total_value if currency == "KRW" and snap.total_value is not None else value
         conn.execute(
@@ -151,6 +151,10 @@ def _store_snapshot(conn: Conn, account_id: int, snap: Snapshot, day: date) -> N
                DO UPDATE SET quantity = EXCLUDED.quantity, avg_cost = EXCLUDED.avg_cost,
                              market_value = EXCLUDED.market_value""",
             (account_id, day, inst["id"], h.quantity, h.avg_price, (h.price * h.quantity) if h.price else None))
+        if h.price:
+            # 증권사가 준 현재가를 그날 시세로 둔다. 시세 수집(네이버)이 나중에 종가로 덮어쓴다.
+            conn.execute("""INSERT INTO price (instrument_id, price_date, close, source) VALUES (%s, %s, %s, %s)
+                            ON CONFLICT (instrument_id, price_date) DO NOTHING""", (inst["id"], day, h.price, provider))
 
 
 def sync_account(conn: Conn, connector: Connector, ds: dict, account: dict, today: date) -> dict:
@@ -177,7 +181,7 @@ def sync_account(conn: Conn, connector: Connector, ds: dict, account: dict, toda
         when = datetime.now(KST) if today == datetime.now(KST).date() else datetime.combine(today, time(23, 59), tzinfo=KST)
     adjustments = reconcile(conn, account["id"], snap, source_id=ds["id"], provider=connector.provider,
                             when=when, opening=first)
-    _store_snapshot(conn, account["id"], snap, today)
+    _store_snapshot(conn, account["id"], snap, today, connector.provider)
     counts = report.counts()
     warnings = [w for w in report.warnings if "계산 잔액" not in w]   # 잔고 맞춤이 처리하는 경고는 뺀다
     skipped = getattr(connector, "skipped", 0)

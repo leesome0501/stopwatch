@@ -230,7 +230,8 @@ export function AccountsSection({ hid, members }: { hid: number; members: Member
                 ) : (
                   <tr key={a.id} className={a.closed_on ? "void" : ""}>
                     <td>{a.name}{a.institution_name && <div className="muted">{a.institution_name}</div>}</td>
-                    <td>{accountTypeLabel(a.account_type)}{a.valuation_method === "reported" && <span className="tag">평가액 입력</span>}</td>
+                    <td>{accountTypeLabel(a.account_type)}{a.valuation_method === "reported" && <span className="tag">평가액 입력</span>}
+                      {a.data_source_id && a.external_ref && <span className="tag">API 연결</span>}</td>
                     <td>{a.owners.map((o) => num(o.share) < 1 ? `${name(o.member_id)} ${Math.round(num(o.share) * 100)}%` : name(o.member_id)).join(", ")}</td>
                     <td>{a.closed_on ? `마감 ${a.closed_on}` : "사용 중"}</td>
                     <td className="num">

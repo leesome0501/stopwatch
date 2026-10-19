@@ -187,6 +187,11 @@ def analyze_parsed(conn: Conn, account_id: int, parsed: ParseResult) -> ImportRe
                     if h and _direction_fits(h["kind"], r.amount):
                         a.category_id, a.category_source = h["category_id"], "history"
                         break
+            # 규칙·과거 분류가 없으면 배당·이자는 기본 카테고리로
+            if a.category_id is None and r.kind in ("dividend", "interest"):
+                c = by_name.get("배당금" if r.kind == "dividend" else "이자")
+                if c:
+                    a.category_id, a.category_source = c["id"], "kind"
             if a.category_id is not None and a.category_name is None:
                 a.category_name = next((c["name"] for c in by_name.values() if c["id"] == a.category_id), None)
         analyzed.append(a)
@@ -269,7 +274,7 @@ def commit_report(conn: Conn, account_id: int, report: ImportReport, *, source_i
             conn.execute(
                 """INSERT INTO txn (account_id, occurred_at, trade_date, kind, amount, currency,
                                     description, data_source_id, dedupe_key)
-                   VALUES (%s, %s, %s, 'adjustment', %s, %s, '기초잔액 (파일 첫 거래 기준)', %s, 'opening-balance')""",
+                   VALUES (%s, %s, %s, 'adjustment', %s, %s, '기초잔액 (첫 거래의 거래 후 잔액 기준)', %s, 'opening-balance')""",
                 (account_id, first.row.moment.at - timedelta(microseconds=1), first.row.moment.day,
                  opening, first.currency, source_id))
             report.opening_balance = opening

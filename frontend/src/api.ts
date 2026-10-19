@@ -52,6 +52,7 @@ export interface Account {
   institution_name: string | null; valuation_method: "transactions" | "reported"; base_currency: string;
   account_number_masked: string | null; visibility: string; opened_on: string | null; maturity_on: string | null;
   closed_on: string | null; interest_rate: Money | null; memo: string | null; owners: OwnerShare[];
+  data_source_id: number | null; external_ref: string | null;
 }
 export interface AccountInput {
   name: string; account_type: string; institution_code?: string | null; valuation_method?: string;
@@ -87,7 +88,7 @@ export interface ImportRow {
   kind: string | null; amount: Money | null; currency: string | null; description: string | null;
   counterparty: string | null; balance_after: Money | null; instrument_symbol: string | null; quantity: Money | null;
   unit_price: Money | null; category_id: number | null; category_name: string | null;
-  category_source: "file" | "rule" | "history" | null; message: string | null;
+  category_source: "file" | "rule" | "history" | "kind" | null; message: string | null;
 }
 export interface ImportResult {
   committed: boolean; batch_id: number | null; format: string | null; file_direction: string | null;
@@ -97,6 +98,29 @@ export interface ImportResult {
 export interface ImportBatch {
   id: number; started_at: string; finished_at: string | null; status: string; file_name: string | null;
   records_total: number; records_new: number; records_duplicate: number; error: string | null;
+}
+
+export type BrokerProvider = "kiwoom" | "kis";
+export interface BrokerConnection {
+  id: number; provider: BrokerProvider; provider_name: string; label: string; member_id: number | null;
+  member_name: string | null; environment: "real" | "mock" | null; key_hint: string | null; kis_accounts: string[];
+  status: string; last_synced_at: string | null; last_error: string | null;
+  linked: { account_id: number; account_name: string; ref: string; synced_until: string | null; start_date: string | null }[];
+  last_run: { id: number; started_at: string; finished_at: string | null; status: string; error: string | null } | null;
+}
+export interface BrokerAccountItem { ref: string; label: string; account_id?: number | null; account_name?: string | null }
+export interface SyncAccountResult {
+  account_id: number; account_name: string; ref: string; period: [string, string]; new: number; duplicate: number;
+  errors: string[]; warnings: string[]; broker_cash: Record<string, string>; broker_total: string | null;
+  adjustments: ({ type: "cash"; currency: string; diff: string } | { type: "quantity"; symbol: string; name: string; diff: string })[];
+}
+export interface SyncResult {
+  run_id: number; status: string; error: string | null; accounts: SyncAccountResult[];
+  failures: { account_id: number; account_name: string; error: string }[];
+}
+export interface ConnectionInput {
+  provider: BrokerProvider; member_id: number; environment: "real" | "mock"; app_key: string; app_secret: string;
+  accounts?: string[]; label?: string;
 }
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
@@ -187,4 +211,15 @@ export const api = {
   previewImport: (accountId: number, file: File) => call<ImportResult>(`/api/accounts/${accountId}/imports/preview`, upload(file)),
   commitImport: (accountId: number, file: File) => call<ImportResult>(`/api/accounts/${accountId}/imports`, upload(file)),
   importBatches: (accountId: number) => call<ImportBatch[]>(`/api/accounts/${accountId}/imports`),
+
+  connections: (hid: number) => call<BrokerConnection[]>(`/api/households/${hid}/connections`),
+  createConnection: (hid: number, c: ConnectionInput) =>
+    call<BrokerConnection & { broker_accounts: BrokerAccountItem[] }>(`/api/households/${hid}/connections`, json("POST", c)),
+  updateConnection: (id: number, c: Partial<ConnectionInput>) => call<BrokerConnection>(`/api/connections/${id}`, json("PATCH", c)),
+  deleteConnection: (id: number) => call<void>(`/api/connections/${id}`, { method: "DELETE" }),
+  brokerAccounts: (id: number) => call<BrokerAccountItem[]>(`/api/connections/${id}/broker-accounts`),
+  linkAccount: (id: number, body: { ref: string; account_id?: number | null; create_name?: string; start_date?: string }) =>
+    call<BrokerConnection>(`/api/connections/${id}/link`, json("POST", body)),
+  unlinkAccount: (id: number, ref: string) => call<BrokerConnection>(`/api/connections/${id}/unlink`, json("POST", { ref })),
+  syncConnection: (id: number) => call<SyncResult>(`/api/connections/${id}/sync`, { method: "POST" }),
 };

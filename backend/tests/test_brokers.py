@@ -157,6 +157,12 @@ def test_kiwoom_connect_link_sync(home, conn):
     assert inst == {"kind": "stock", "market": "KRX", "name": "삼성전자"}
     rep = conn.execute("SELECT count(*) AS n FROM reported_holding WHERE account_id = %s", (acc,)).fetchone()["n"]
     assert rep == 2
+    cat = conn.execute("""SELECT c.name FROM txn t JOIN category c ON c.id = t.category_id
+                           WHERE t.account_id = %s AND t.kind = 'dividend'""", (acc,)).fetchone()
+    assert cat["name"] == "배당금"
+    px = conn.execute("""SELECT p.close, p.source FROM price p JOIN instrument i ON i.id = p.instrument_id
+                          WHERE i.symbol = '000660'""").fetchone()
+    assert px == {"close": D("160000.00000000"), "source": "kiwoom"}   # 증권사 현재가를 그날 시세로
 
     # 두 번째 동기화: 오늘 매수 1건만 새로, 잔고 맞춤 없음, 토큰 재발급 없음
     today = kst_today()
