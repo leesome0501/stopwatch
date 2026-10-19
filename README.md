@@ -21,7 +21,7 @@
 
 ## 로드맵
 
-1. **기반** (진행 중): 데이터 모델 ✅, API·엑셀 가져오기 ✅, 시세·환율 수집, 순자산 대시보드
+1. **기반** ✅: 데이터 모델, API·엑셀 가져오기, 시세·환율 수집, 순자산 대시보드
 2. **자동 수집**: 한국투자증권 API, 업비트, CODEF 은행·카드, 이체 매칭, 자동 분류, 원가·수익률 엔진
 3. **세금·기타 자산**: 홈택스, 국민연금, 보험, 부동산 시세, 세금 추정
 4. **가족 운영**: 구성원별 권한, 수집 실패·인증서 만료 알림, 월간 리포트
@@ -38,6 +38,9 @@
 | `scripts/db-check.sh` | 빈 DB에 스키마를 올리고 검증 실행 |
 | `backend/` | FastAPI 백엔드 (`assethub` 패키지, 테스트) |
 | `backend/assethub/importer/` | 엑셀·CSV 가져오기 (형식 판별, 순서·잔액 검증, 중복 판정) |
+| `backend/assethub/market/` | 시세·환율 수집 (네이버 국내·해외 주식, 업비트, 네이버 환율) |
+| `backend/assethub/valuation.py` | 평가 엔진 (날짜별 평가액, 이동평균 원가, 자산 구성) |
+| `frontend/` | 대시보드 (React + Vite, 차트는 직접 그린 SVG) |
 
 ## 백엔드 실행
 
@@ -52,7 +55,14 @@ uv sync
 DATABASE_URL=postgresql:///assethub uv run uvicorn assethub.main:app --reload
 ```
 
-`http://localhost:8000/docs` 에서 모든 API를 바로 시험할 수 있습니다.
+대시보드를 함께 띄우려면 한 번 빌드해 둡니다. 빌드된 화면은 FastAPI가 `/`에서 서빙합니다.
+
+```bash
+cd frontend && npm install && npm run build
+```
+
+`http://localhost:8000/` 이 대시보드, `http://localhost:8000/docs` 가 API 문서입니다.
+화면을 고칠 때는 `npm run dev`(5173 포트)로 띄우면 `/api` 요청이 8000 포트로 넘어갑니다.
 아직 로그인 기능이 없으므로 집 안 네트워크나 VPN 뒤에서만 띄우세요.
 
 ## 주요 API
@@ -66,8 +76,10 @@ DATABASE_URL=postgresql:///assethub uv run uvicorn assethub.main:app --reload
 | 현황 | `GET /api/households/{id}/summary`, `/cashflow?month=YYYY-MM`, `/unmatched-transfers` |
 | 엑셀 가져오기 | `POST /api/accounts/{id}/imports/preview`, `POST /api/accounts/{id}/imports` |
 | 표준 양식 | `GET /api/import-template` |
+| 대시보드 | `GET /api/households/{id}/dashboard?range=1m·3m·6m·1y·3y·all` |
+| 시세 수집 | `POST /api/market/refresh`, `GET /api/market/runs` |
 
-금액은 정밀도를 지키려고 JSON에서 문자열(`"1145000.0000"`)로 주고받습니다.
+금액은 정밀도를 지키려고 JSON에서 문자열(`"1145000.0000"`)로 주고받습니다. 화면 전용인 대시보드와 현황 API만 숫자로 줍니다.
 
 ## 엑셀 가져오기
 
@@ -83,6 +95,41 @@ DATABASE_URL=postgresql:///assethub uv run uvicorn assethub.main:app --reload
 - **자동 분류**: 파일에 적힌 카테고리, 가구의 분류 규칙, 같은 적요의 과거 거래, 같은 거래처의 과거 거래 순서로 카테고리를 채웁니다.
 
 은행 형식, 중복 판정, 순서·잔액 검증 규칙은 사업자관리 프로젝트의 은행 거래내역 가져오기에서 실제로 겪은 사례를 옮겨 왔습니다.
+
+## 시세·환율 수집
+
+거래 내역에 나오는 종목과 외화만 골라, DB에 없는 기간의 일별 종가를 받아 옵니다. 마지막 일주일은 매번 다시 받아 수정된 종가를 반영합니다.
+
+| 대상 | 소스 | 비고 |
+| --- | --- | --- |
+| 국내 주식·ETF (시장 `KRX`, `KOSPI`, `KOSDAQ`) | 네이버 금융 | 종목코드 6자리 |
+| 미국 주식·ETF (시장 `NASDAQ`, `NYSE`, `AMEX`) | 네이버 금융 | 네이버 코드(`AAPL.O`, `BRKb` 등)를 자동으로 찾아 `price_code`에 저장 |
+| 가상자산 (시장 `UPBIT`, 종목코드 `KRW-BTC`) | 업비트 공식 API | |
+| 환율 (USD, JPY, EUR 등 → 원) | 네이버 금융 | 엔화는 100엔 시세를 1엔으로 환산 |
+| 부동산, 비상장 | 수동 입력 | `PUT /api/instruments/{id}/prices`. 수동 시세는 수집기가 덮어쓰지 않음 |
+
+네이버 금융 API는 공식 공개 API가 아니라 화면이 쓰는 내부 API라서 형식이 바뀔 수 있습니다. 소스마다 어댑터를 분리해 두었으므로, 2단계에서 한국투자증권 API를 같은 방식으로 붙이면 됩니다.
+
+매일 장 마감 후 한 번 돌리면 됩니다. 대시보드의 "시세 새로고침" 단추로도 실행할 수 있습니다.
+
+```bash
+# crontab -e : 평일 18:40(한국 시간)과 다음 날 07:10(미국 장 마감 후)
+40 18 * * 1-5  cd ~/asset-hub/backend && DATABASE_URL=postgresql:///assethub .venv/bin/python -m assethub.collect
+10 7  * * 2-6  cd ~/asset-hub/backend && DATABASE_URL=postgresql:///assethub .venv/bin/python -m assethub.collect
+```
+
+## 대시보드
+
+![예제 가구로 띄운 대시보드](docs/images/dashboard.png)
+
+- **순자산**: 자산, 부채, 이번 달 수입·지출과 지난 30일 변화.
+- **순자산 추이**: 기간(1개월~전체)을 고르면 그날 종가와 환율로 다시 평가한 값을 그립니다. 마우스나 좌우 화살표로 날짜별 값을 봅니다.
+- **자산 구성, 구성원별 순자산**: 공동명의는 지분만큼 나눕니다.
+- **수입과 지출**: 최근 6개월, 이번 달 카테고리별 지출. 내부이체는 빠집니다.
+- **보유 종목**: 이동평균 단가, 현재가, 평가손익. 원화 손익은 매수일 환율 기준이라 해외주식은 환율 효과가 포함됩니다. 손익은 한국 관례대로 상승 ▲빨강, 하락 ▼파랑입니다.
+- **계좌**: 평가액, 명의, 기관 보고 기준일.
+
+모든 차트에 "표로 보기"가 있고, 휴대폰 화면과 다크 모드를 지원합니다. 오래된 시세나 시세가 없는 종목은 보유 종목 위에 따로 알려 줍니다.
 
 ## 검증 실행
 

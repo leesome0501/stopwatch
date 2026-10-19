@@ -126,6 +126,7 @@ CREATE TABLE instrument (
     currency      char(3) NOT NULL,                     -- 시세 통화
     country       char(2),                              -- 'KR','US'
     household_id  bigint  REFERENCES household(id),     -- 비상장/개인 자산(아파트 등)만 지정
+    price_code    text,                                 -- 시세 소스 쪽 코드 ('AAPL.O' 등). 비우면 수집기가 찾아 채움
     created_at    timestamptz NOT NULL DEFAULT now(),
     UNIQUE (market, symbol)
 );
@@ -147,6 +148,18 @@ CREATE TABLE fx_rate (
     krw_rate   numeric(20,8) NOT NULL CHECK (krw_rate > 0),
     source     text          NOT NULL,
     PRIMARY KEY (currency, rate_date)
+);
+
+-- 시세·환율 수집 실행 기록 (가구와 무관한 공용 데이터)
+CREATE TABLE market_sync_run (
+    id               bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    started_at       timestamptz NOT NULL DEFAULT now(),
+    finished_at      timestamptz,
+    status           text        NOT NULL DEFAULT 'running'
+                     CHECK (status IN ('running','succeeded','partial','failed')),
+    prices_upserted  int         NOT NULL DEFAULT 0,
+    fx_upserted      int         NOT NULL DEFAULT 0,
+    errors           jsonb       NOT NULL DEFAULT '[]'      -- [{"target": "AAPL", "message": "..."}]
 );
 
 -- ---------------------------------------------------------------------
@@ -380,8 +393,13 @@ WITH cash AS (
       FROM v_cash_balance cb
      GROUP BY cb.account_id
 ), pos AS (
+    -- 시세가 없으면(부동산 등 아직 미입력) 마지막 거래 단가로 평가
     SELECT p.account_id,
-           sum(p.quantity * price_asof(p.instrument_id, current_date)
+           sum(p.quantity * coalesce(price_asof(p.instrument_id, current_date),
+                                     (SELECT t.unit_price FROM txn t
+                                       WHERE t.account_id = p.account_id AND t.instrument_id = p.instrument_id
+                                         AND t.unit_price IS NOT NULL AND t.status = 'posted'
+                                       ORDER BY t.occurred_at DESC, t.id DESC LIMIT 1))
                           * fx_to_krw(i.currency, current_date)) AS holdings_krw
       FROM v_position p JOIN instrument i ON i.id = p.instrument_id
      GROUP BY p.account_id

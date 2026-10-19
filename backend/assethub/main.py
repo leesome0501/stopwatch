@@ -9,9 +9,10 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
-from .api import accounts, households, imports, market, reports, transactions
-from .config import Settings, load_settings
+from .api import accounts, dashboard, households, imports, market, reports, transactions
+from .config import FRONTEND_DIST, Settings, load_settings
 from .db import open_pool
 
 
@@ -34,8 +35,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             conn.execute("SELECT 1")
         return {"status": "ok"}
 
-    for module in (households, accounts, market, transactions, reports, imports):
+    for module in (households, accounts, market, transactions, reports, imports, dashboard):
         app.include_router(module.router)
+    # 대시보드: frontend 를 빌드(npm run build)해 두면 / 에서 함께 서빙한다
+    if (FRONTEND_DIST / "index.html").exists():
+        app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="dashboard")
     return app
 
 

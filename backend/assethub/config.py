@@ -6,6 +6,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DB_DIR = REPO_ROOT / "db"
+FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
 
 
 @dataclass(frozen=True)
