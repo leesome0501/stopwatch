@@ -37,6 +37,69 @@ class MemberIn(BaseModel):
     is_dependent: bool = False
 
 
+class MemberPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1)
+    relation: Relation | None = None
+    birth_date: date | None = None
+    is_dependent: bool | None = None
+
+
+class HouseholdPatch(BaseModel):
+    name: str = Field(min_length=1)
+
+
+class HouseholdDelete(BaseModel):
+    confirm_name: str   # 실수 방지: 가구 이름을 그대로 입력해야 지운다
+
+
+class Institution(Row):
+    id: int
+    code: str
+    name: str
+    kind: str
+
+
+class CategoryIn(BaseModel):
+    name: str = Field(min_length=1)
+    parent_id: int | None = None
+    kind: Literal["income", "expense", "transfer"] | None = None   # 상위 카테고리를 새로 만들 때만
+
+
+class CategoryRuleIn(BaseModel):
+    match_field: Literal["description", "counterparty"] = "description"
+    match_type: Literal["contains", "equals", "regex"] = "contains"
+    pattern: str = Field(min_length=1)
+    category_id: int
+    account_id: int | None = None
+    priority: int = 100
+
+
+class CategoryRule(Row):
+    id: int
+    match_field: str
+    match_type: str
+    pattern: str
+    category_id: int
+    category_name: str
+    account_id: int | None
+    priority: int
+    enabled: bool
+
+
+class ReportedBalanceIn(BaseModel):
+    as_of: date
+    total_value: Decimal
+    currency: str = Field(default="KRW", min_length=3, max_length=3)
+    cash_amount: Decimal | None = None
+
+
+class ReportedBalance(Row):
+    as_of: date
+    currency: str
+    total_value: Decimal
+    cash_amount: Decimal | None
+
+
 class Member(Row):
     id: int
     household_id: int
@@ -67,7 +130,9 @@ class AccountIn(BaseModel):
 
 
 class AccountPatch(BaseModel):
-    name: str | None = None
+    name: str | None = Field(default=None, min_length=1)
+    institution_code: str | None = None
+    opened_on: date | None = None
     account_number_masked: str | None = None
     visibility: Literal["household", "owners"] | None = None
     maturity_on: date | None = None
@@ -107,6 +172,18 @@ class InstrumentIn(BaseModel):
     household_id: int | None = None
 
 
+class InstrumentPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1)
+    asset_class: Literal["equity", "bond", "cash_equiv", "commodity", "crypto", "real_estate", "alternative", "mixed"] | None = None
+    price_code: str | None = None
+
+
+class PricePoint(Row):
+    price_date: date
+    close: Decimal
+    source: str
+
+
 class Instrument(Row):
     id: int
     kind: str
@@ -118,6 +195,7 @@ class Instrument(Row):
     isin: str | None
     country: str | None
     household_id: int | None
+    price_code: str | None = None
 
 
 class PriceIn(BaseModel):
@@ -160,6 +238,7 @@ class TxnIn(BaseModel):
 
 class TxnPatch(BaseModel):
     category_id: int | None = None
+    description: str | None = None
     counterparty: str | None = None
     memo: str | None = None
     group_id: UUID | None = None
@@ -185,6 +264,23 @@ class Txn(Row):
     memo: str | None
     group_id: UUID | None
     status: str
+
+
+class TxnListItem(Txn):
+    account_name: str
+    category_name: str | None
+    category_parent: str | None
+    category_kind: str | None
+    instrument_name: str | None
+    instrument_symbol: str | None
+    amount_krw: Decimal
+
+
+class TxnPage(BaseModel):
+    total: int
+    sum_in_krw: Decimal
+    sum_out_krw: Decimal
+    items: list[TxnListItem]
 
 
 class ImportRowOut(BaseModel):

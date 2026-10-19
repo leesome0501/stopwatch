@@ -4,7 +4,7 @@ import psycopg
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..db import Conn, get_conn
-from ..schemas import FxRateIn, Instrument, InstrumentIn, PriceIn
+from ..schemas import FxRateIn, Instrument, InstrumentIn, InstrumentPatch, PriceIn, PricePoint
 from .common import require
 
 router = APIRouter(tags=["종목·시세"])
@@ -57,3 +57,26 @@ def upsert_fx_rates(body: list[FxRateIn], conn: Conn = Depends(get_conn)):
                ON CONFLICT (currency, rate_date)
                DO UPDATE SET krw_rate = EXCLUDED.krw_rate, source = EXCLUDED.source""",
             (r.currency.upper(), r.rate_date, r.krw_rate, r.source))
+
+
+@router.patch("/api/instruments/{instrument_id}", response_model=Instrument)
+def patch_instrument(instrument_id: int, body: InstrumentPatch, conn: Conn = Depends(get_conn)):
+    require(conn, "instrument", instrument_id, "종목")
+    changes = {k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None or k == "price_code"}
+    if changes:
+        sets = ", ".join(f"{k} = %s" for k in changes)
+        conn.execute(f"UPDATE instrument SET {sets} WHERE id = %s", (*changes.values(), instrument_id))
+    return conn.execute("SELECT * FROM instrument WHERE id = %s", (instrument_id,)).fetchone()
+
+
+@router.get("/api/instruments/{instrument_id}/prices", response_model=list[PricePoint])
+def recent_prices(instrument_id: int, limit: int = 30, conn: Conn = Depends(get_conn)):
+    require(conn, "instrument", instrument_id, "종목")
+    return conn.execute("""SELECT price_date, close, source FROM price WHERE instrument_id = %s
+                            ORDER BY price_date DESC LIMIT %s""", (instrument_id, min(limit, 1000))).fetchall()
+
+
+@router.delete("/api/instruments/{instrument_id}/prices/{price_date}", status_code=204)
+def delete_price(instrument_id: int, price_date: str, conn: Conn = Depends(get_conn)):
+    require(conn, "instrument", instrument_id, "종목")
+    conn.execute("DELETE FROM price WHERE instrument_id = %s AND price_date = %s::date", (instrument_id, price_date))

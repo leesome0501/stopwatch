@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..db import Conn, get_conn
 from ..importer.parsing import KST
-from ..schemas import Txn, TxnIn, TxnPatch
+from ..schemas import Txn, TxnIn, TxnPage, TxnPatch
 from .accounts import fetch_account
 from .common import require
 
@@ -84,3 +84,52 @@ def void_transaction(txn_id: int, conn: Conn = Depends(get_conn)):
     """삭제 대신 무효 처리한다. 원본과 중복 판정 키가 남아 같은 거래가 다시 들어오지 않는다."""
     require(conn, "txn", txn_id, "거래")
     conn.execute("UPDATE txn SET status = 'void', updated_at = now() WHERE id = %s", (txn_id,))
+
+
+@router.get("/api/households/{household_id}/transactions", response_model=TxnPage)
+def search_transactions(household_id: int, account_id: int | None = None, date_from: date | None = None,
+                        date_to: date | None = None, category_id: int | None = None, uncategorized: bool = False,
+                        q: str = "", direction: str = "", limit: int = 100, offset: int = 0,
+                        conn: Conn = Depends(get_conn)):
+    """가구 전체 거래 검색 (거래내역 화면). 최신순. 합계는 거래일 환율로 원화 환산."""
+    require(conn, "household", household_id, "가구")
+    where = ["a.household_id = %(h)s", "t.status <> 'void'"]
+    params: dict = {"h": household_id}
+    if account_id is not None:
+        where.append("t.account_id = %(a)s"); params["a"] = account_id
+    if date_from:
+        where.append("t.trade_date >= %(f)s"); params["f"] = date_from
+    if date_to:
+        where.append("t.trade_date <= %(t)s"); params["t"] = date_to
+    if uncategorized:
+        where.append("t.category_id IS NULL AND t.kind IN ('cash_in','cash_out')")
+    elif category_id is not None:
+        # 상위 카테고리를 고르면 하위 카테고리 거래도 포함
+        where.append("(t.category_id = %(c)s OR c.parent_id = %(c)s)"); params["c"] = category_id
+    if q.strip():
+        where.append("(t.description ILIKE %(q)s OR t.counterparty ILIKE %(q)s OR t.memo ILIKE %(q)s)")
+        params["q"] = f"%{q.strip()}%"
+    if direction == "in":
+        where.append("t.amount > 0")
+    elif direction == "out":
+        where.append("t.amount < 0")
+    base = f"""FROM v_txn_krw t
+                 JOIN account a ON a.id = t.account_id
+                 LEFT JOIN category c ON c.id = t.category_id
+                 LEFT JOIN category pc ON pc.id = c.parent_id
+                 LEFT JOIN instrument i ON i.id = t.instrument_id
+                WHERE {" AND ".join(where)}"""
+    agg = conn.execute(f"""SELECT count(*) AS total,
+                                  coalesce(sum(t.amount_krw) FILTER (WHERE t.amount_krw > 0), 0) AS sum_in_krw,
+                                  coalesce(-sum(t.amount_krw) FILTER (WHERE t.amount_krw < 0), 0) AS sum_out_krw
+                           {base}""", params).fetchone()
+    params.update(limit=min(max(limit, 1), 500), offset=max(offset, 0))
+    items = conn.execute(
+        f"""SELECT t.id, t.account_id, t.occurred_at, t.trade_date, t.kind, t.amount, t.currency, t.instrument_id,
+                   t.quantity, t.unit_price, t.balance_after, t.fee, t.tax, t.category_id, t.counterparty,
+                   t.description, t.memo, t.group_id, t.status, t.amount_krw,
+                   a.name AS account_name, c.name AS category_name, pc.name AS category_parent,
+                   c.kind AS category_kind, i.name AS instrument_name, i.symbol AS instrument_symbol
+            {base}
+            ORDER BY t.occurred_at DESC, t.id DESC LIMIT %(limit)s OFFSET %(offset)s""", params).fetchall()
+    return {**agg, "items": items}
