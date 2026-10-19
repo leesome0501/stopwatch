@@ -13,7 +13,7 @@ from psycopg.types.json import Jsonb
 from ..db import Conn
 from .dedupe import dedupe_keys
 from .detect import parse_file
-from .rows import ImportRow, RowError
+from .rows import ImportRow, ParseResult, RowError
 from .sequence import BALANCE_EPS, chain_issues, order_rows
 
 GROUP_NS = uuid.UUID("0b6f2f3e-5d4c-4b1a-9a57-1f4f8e0a6c11")
@@ -127,9 +127,13 @@ def _direction_fits(kind: str, amount: Decimal) -> bool:
 
 
 def analyze(conn: Conn, account_id: int, data: bytes) -> ImportReport:
+    return analyze_parsed(conn, account_id, parse_file(data))
+
+
+def analyze_parsed(conn: Conn, account_id: int, parsed: ParseResult) -> ImportReport:
+    """파일이든 증권사 API 든, 표준 행(ImportRow)으로 바뀐 뒤에는 같은 분석을 거친다."""
     acc = _account(conn, account_id)
     hid = acc["household_id"]
-    parsed = parse_file(data)
     report = ImportReport(format=parsed.format, direction=None, account_number=parsed.account_number,
                           rows=[], errors=list(parsed.errors), warnings=list(parsed.warnings))
     if not parsed.rows:
@@ -241,7 +245,12 @@ def commit(conn: Conn, account_id: int, data: bytes, file_name: str | None) -> I
             """SELECT 1 FROM import_batch WHERE account_id = %s AND file_sha256 = %s
                 AND status IN ('succeeded','partial') LIMIT 1""", (account_id, sha)).fetchone():
         report.warnings.append("같은 파일을 전에 올린 적이 있습니다. 이미 있는 거래는 건너뛰었습니다.")
+    return commit_report(conn, account_id, report, source_id=source_id, file_name=file_name, sha=sha)
 
+
+def commit_report(conn: Conn, account_id: int, report: ImportReport, *, source_id: int,
+                  file_name: str | None, sha: str | None = None) -> ImportReport:
+    """분석이 끝난 보고서의 새 행을 저장한다 (파일 업로드와 증권사 동기화가 같이 쓴다)."""
     batch_id = conn.execute(
         """INSERT INTO import_batch (data_source_id, account_id, file_name, file_sha256)
            VALUES (%s, %s, %s, %s) RETURNING id""",

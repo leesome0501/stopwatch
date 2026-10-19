@@ -27,6 +27,8 @@ class ImportRow:
     memo: str | None = None
     group_label: str | None = None
     raw: dict[str, str] = field(default_factory=dict)
+    external_id: str | None = None       # 증권사 API 의 거래번호처럼 소스가 주는 고유 ID (중복 판정에 우선 사용)
+    instrument_name: str | None = None   # API 로 받은 종목명 (종목 자동 등록용)
 
 
 @dataclass

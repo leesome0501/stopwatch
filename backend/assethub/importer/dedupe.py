@@ -5,6 +5,7 @@
 '한국 날짜 + 금액 + 거래 후 잔액' 을 키로 쓴다. 잔액은 그 순간의 누적값이라
 같은 날 같은 금액에 잔액까지 같은 다른 거래는 사실상 없다.
 잔액이 없으면 일시·유형·금액·종목·적요에 같은 파일 안 순번을 붙여 해시한다.
+증권사 API 처럼 소스가 고유 거래번호(external_id)를 주면 그것을 가장 먼저 쓴다.
 """
 from __future__ import annotations
 
@@ -27,6 +28,9 @@ def dedupe_keys(rows: list[ImportRow], currencies: list[str]) -> list[str]:
     seen: Counter[str] = Counter()
     keys: list[str] = []
     for r, cur in zip(rows, currencies, strict=True):
+        if r.external_id:
+            keys.append(f"ext:{r.external_id}")
+            continue
         if r.balance_after is not None:
             keys.append(f"bal:{r.moment.day}|{cur}|{_num(r.amount)}|{_num(r.balance_after)}")
             continue

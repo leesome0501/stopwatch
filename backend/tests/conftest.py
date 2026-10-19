@@ -12,7 +12,12 @@ import pytest
 from fastapi.testclient import TestClient
 from psycopg.rows import dict_row
 
-from assethub.config import Settings
+from cryptography.fernet import Fernet
+
+# 테스트가 실제 backend/.env 에 암호화 키를 쓰지 않도록 미리 정해 둔다
+os.environ.setdefault("ASSETHUB_SECRET_KEY", Fernet.generate_key().decode())
+
+from assethub.config import Settings  # noqa: E402
 from assethub.migrate import migrate
 from assethub.main import create_app
 
