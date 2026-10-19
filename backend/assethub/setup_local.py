@@ -21,7 +21,7 @@ import psycopg
 from psycopg import sql
 
 from .config import DB_DIR, ENV_FILE, read_env_file
-from .db import apply_schema
+from .db import apply_schema, utf8
 
 
 def ask(prompt: str, default: str, yes: bool) -> str:
@@ -69,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
         admin_url = psycopg.conninfo.make_conninfo(url, dbname="postgres")
 
     try:
-        with psycopg.connect(admin_url, autocommit=True, connect_timeout=5) as conn:
+        with psycopg.connect(utf8(admin_url), autocommit=True, connect_timeout=5) as conn:
             version = conn.execute("SHOW server_version").fetchone()[0]
             print(f"PostgreSQL {version} 에 접속했습니다.")
             if int(version.split(".")[0]) < 16:
@@ -91,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  자세한 오류: {str(e).strip().splitlines()[0] if str(e).strip() else e}")
         return 1
 
-    with psycopg.connect(url, autocommit=True) as conn:
+    with psycopg.connect(utf8(url), autocommit=True) as conn:
         has_schema = conn.execute("SELECT to_regclass('public.household') IS NOT NULL").fetchone()[0]
         if has_schema:
             print("테이블이 이미 있어 건너뜁니다 (기존 데이터는 그대로 둡니다).")

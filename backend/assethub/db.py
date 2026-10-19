@@ -13,8 +13,13 @@ from .config import DB_DIR
 Conn = psycopg.Connection
 
 
+def utf8(url: str) -> str:
+    """한국어 Windows 의 PostgreSQL 은 기본 문자 인코딩이 CP949 일 수 있어 UTF-8 로 고정한다."""
+    return psycopg.conninfo.make_conninfo(url, client_encoding="utf8")
+
+
 def open_pool(url: str) -> ConnectionPool:
-    pool = ConnectionPool(url, kwargs={"row_factory": dict_row}, min_size=1, max_size=10, open=False)
+    pool = ConnectionPool(utf8(url), kwargs={"row_factory": dict_row}, min_size=1, max_size=10, open=False)
     pool.open(wait=True)
     return pool
 
