@@ -91,7 +91,7 @@ def search_transactions(household_id: int, account_id: int | None = None, date_f
                         date_to: date | None = None, category_id: int | None = None, uncategorized: bool = False,
                         q: str = "", direction: str = "", limit: int = 100, offset: int = 0,
                         conn: Conn = Depends(get_conn)):
-    """가구 전체 거래 검색 (거래내역 화면). 최신순. 합계는 거래일 환율로 원화 환산."""
+    """가구 전체 거래 검색 (거래내역 화면). 최신순. 합계는 거래일 환율로 원화 환산하고 잔액 조정(기초잔액)은 뺀다."""
     require(conn, "household", household_id, "가구")
     where = ["a.household_id = %(h)s", "t.status <> 'void'"]
     params: dict = {"h": household_id}
@@ -120,8 +120,8 @@ def search_transactions(household_id: int, account_id: int | None = None, date_f
                  LEFT JOIN instrument i ON i.id = t.instrument_id
                 WHERE {" AND ".join(where)}"""
     agg = conn.execute(f"""SELECT count(*) AS total,
-                                  coalesce(sum(t.amount_krw) FILTER (WHERE t.amount_krw > 0), 0) AS sum_in_krw,
-                                  coalesce(-sum(t.amount_krw) FILTER (WHERE t.amount_krw < 0), 0) AS sum_out_krw
+                                  coalesce(sum(t.amount_krw) FILTER (WHERE t.amount_krw > 0 AND t.kind <> 'adjustment'), 0) AS sum_in_krw,
+                                  coalesce(-sum(t.amount_krw) FILTER (WHERE t.amount_krw < 0 AND t.kind <> 'adjustment'), 0) AS sum_out_krw
                            {base}""", params).fetchone()
     params.update(limit=min(max(limit, 1), 500), offset=max(offset, 0))
     items = conn.execute(

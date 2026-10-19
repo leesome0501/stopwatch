@@ -118,6 +118,7 @@ def test_transaction_search(client, home, conn):
     page = client.get(url).json()
     assert page["total"] == 4   # 3건 + 기초잔액
     assert D(page["sum_out_krw"]) == D(105000)
+    assert D(page["sum_in_krw"]) == D(150000)   # 기초잔액(잔액 조정)은 들어온 돈이 아니다
     assert page["items"][0]["counterparty"] == "스타벅스" and page["items"][0]["account_name"] == "월급통장"
 
     oct_ = client.get(url, params={"date_from": "2026-10-01", "date_to": "2026-10-31"}).json()
